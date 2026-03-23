@@ -1,3 +1,4 @@
+import pickle
 import config
 
 
@@ -24,7 +25,7 @@ def parse_csv(lines):
         values = line.strip().split(',')
 
         if len(values) != 5:
-            print('컬럼 개수 오류:', line)
+            print('컬럼 오류:', line)
             continue
 
         try:
@@ -33,7 +34,6 @@ def parse_csv(lines):
             print('Flammability 변환 실패:', line)
             continue
 
-        # Weight / Gravity는 optional 처리
         try:
             weight = float(values[1])
         except ValueError:
@@ -55,7 +55,8 @@ def parse_csv(lines):
         data_list.append(data)
 
     return data_list
-    
+
+
 def sort_by_flammability(data_list):
     return sorted(
         data_list,
@@ -69,18 +70,6 @@ def filter_dangerous(data_list):
         item for item in data_list
         if item['Flammability'] >= config.FLAMMABILITY_THRESHOLD
     ]
-
-
-def print_data(lines):
-    print('=== 원본 CSV ===')
-    for line in lines:
-        print(line.strip())
-
-
-def print_dangerous(data_list):
-    print('\n=== 인화성 위험 물질 ===')
-    for item in data_list:
-        print(item)
 
 
 def save_to_csv(file_path, data_list):
@@ -98,18 +87,42 @@ def save_to_csv(file_path, data_list):
                 )
                 file.write(line)
 
-        print('\n파일 저장 완료')
+        print('CSV 저장 완료')
 
     except Exception as e:
-        print('파일 저장 오류:', e)
+        print('CSV 저장 오류:', e)
 
+
+# 이진 파일 저장
+def save_to_binary(file_path, data_list):
+    try:
+        with open(file_path, 'wb') as file:
+            pickle.dump(data_list, file)
+
+        print('이진 파일 저장 완료')
+
+    except Exception as e:
+        print('이진 파일 저장 오류:', e)
+
+
+# 이진 파일 읽기
+def read_binary(file_path):
+    try:
+        with open(file_path, 'rb') as file:
+            data = pickle.load(file)
+
+        print('\n=== 이진 파일 복원 데이터 ===')
+        for item in data:
+            print(item)
+
+    except Exception as e:
+        print('이진 파일 읽기 오류:', e)
+        
 
 def main():
     lines = read_csv_file(config.INPUT_FILE)
     if not lines:
         return
-
-    print_data(lines)
 
     data_list = parse_csv(lines)
 
@@ -117,10 +130,11 @@ def main():
 
     dangerous_list = filter_dangerous(sorted_list)
 
-    print_dangerous(dangerous_list)
-
     save_to_csv(config.OUTPUT_FILE, dangerous_list)
 
+    # 보너스
+    save_to_binary(config.BINARY_FILE, sorted_list)
+    read_binary(config.BINARY_FILE)
 
 if __name__ == '__main__':
     main()
