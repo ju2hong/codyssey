@@ -2,6 +2,12 @@ import pickle
 import config
 
 
+def print_csv(lines):
+    print('=== 원본 CSV 출력 ===')
+    for line in lines:
+        print(line.strip())
+
+
 def read_csv_file(file_path):
     try:
         with open(file_path, 'r') as file:
@@ -117,12 +123,14 @@ def read_binary(file_path):
 
     except Exception as e:
         print('이진 파일 읽기 오류:', e)
-        
+
 
 def main():
     lines = read_csv_file(config.INPUT_FILE)
     if not lines:
         return
+    
+    print_csv(lines)
 
     data_list = parse_csv(lines)
 
