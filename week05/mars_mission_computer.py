@@ -7,6 +7,7 @@ class MissionComputer:
 
     def __init__(self):
         self.psutil = self._load_psutil()
+        self.settings = self._load_settings()
 
     def _load_psutil(self):
         try:
@@ -15,12 +16,30 @@ class MissionComputer:
         except Exception:
             return None
 
-    def _safe_execute(self, func, default_value = 'cannot get info'):
+    def _load_settings(self):
+        try:
+            base_path = os.path.dirname(__file__)
+            file_path = os.path.join(base_path, 'setting.txt')
+
+            with open(file_path, 'r') as f:
+                return [line.strip() for line in f if line.strip()]
+        except Exception:
+            return []
+
+    def _safe_execute(self, func, default_value='cannot get info'):
         try:
             return func()
         except Exception:
             return default_value
 
+    def _filter_data(self, data):
+        if not self.settings:
+            return data
+        return {k: v for k, v in data.items() if k in self.settings}
+
+    # =========================
+    # 시스템 정보
+    # =========================
     def get_mission_computer_info(self):
         info = {
             'os': self._safe_execute(platform.system),
@@ -30,6 +49,7 @@ class MissionComputer:
             'memory_total': self._get_memory_total()
         }
 
+        info = self._filter_data(info)
         self._print_json(info)
         return info
 
@@ -40,19 +60,23 @@ class MissionComputer:
             )
         return 'psutil not available'
 
+    # =========================
+    # 시스템 부하
+    # =========================
     def get_mission_computer_load(self):
         load = {
             'cpu_usage': self._get_cpu_usage(),
             'memory_usage': self._get_memory_usage()
         }
 
+        load = self._filter_data(load)
         self._print_json(load)
         return load
 
     def _get_cpu_usage(self):
         if self.psutil:
             return self._safe_execute(
-                lambda: self.psutil.cpu_percent(interval = 1)
+                lambda: self.psutil.cpu_percent(interval=1)
             )
         return 'psutil not available'
 
@@ -64,7 +88,7 @@ class MissionComputer:
         return 'psutil not available'
 
     def _print_json(self, data):
-        print(json.dumps(data, indent = 4))
+        print(json.dumps(data, indent=4))
 
 
 if __name__ == '__main__':
