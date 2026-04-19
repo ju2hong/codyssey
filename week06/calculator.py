@@ -48,11 +48,27 @@ class Calculator(QWidget):
     def on_click(self):
         sender = self.sender()
         text = sender.text()
+        current = self.display.text()
 
         if text == 'C':
             self.display.clear()
+
+        elif text == '=':
+            try:
+                expression = current.replace('×', '*').replace('÷', '/')
+                result = str(eval(expression))
+                self.display.setText(result)
+            except Exception:
+                self.display.setText('Error')
+
+        elif text == '±':
+            if current:
+                if current.startswith('-'):
+                    self.display.setText(current[1:])
+                else:
+                    self.display.setText('-' + current)
+
         else:
-            current = self.display.text()
             self.display.setText(current + text)
 
 
