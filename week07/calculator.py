@@ -4,7 +4,7 @@ from PyQt5.QtWidgets import (
     QVBoxLayout, QLabel, QPushButton, QSizePolicy
 )
 from PyQt5.QtCore import Qt
-from PyQt5.QtGui import QFont, QPainter, QColor, QPainterPath
+from PyQt5.QtGui import QFont, QFontMetrics, QPainter, QColor, QPainterPath
 
 C = {
     'bg': '#000000', 'num': '#333333', 'num_p': '#737373',
@@ -37,8 +37,10 @@ class Calculator:
 
     def _fmt(self, v):
         if v == int(v) and abs(v) < 1e15: return str(int(v))
-        if abs(v) >= 1e10 or (0 < abs(v) < 1e-4): return f'{v:.10g}'
-        return f'{v:.10f}'.rstrip('0').rstrip('.')
+        if abs(v) >= 1e10 or (0 < abs(v) < 1e-4):
+            return f'{round(v,6):.6g}'
+        r = round(v, 6)
+        return str(int(r)) if r == int(r) else f'{r:.6f}'.rstrip('0').rstrip('.')
 
     def input_digit(self, d):
         if self._next: self._s = d; self._next = False
@@ -173,8 +175,11 @@ class CalcWindow(QMainWindow):
         return lambda checked=False, d=lbl: self._d(d)
 
     def _fit(self, t):
-        f = QFont(FONT, 80); f.setWeight(QFont.Light)
-        self._lbl.setFont(f)
+        dw = self.W - self.M*2
+        for sz in range(80, 23, -1):
+            f = QFont(FONT, sz); f.setWeight(QFont.Light)
+            if QFontMetrics(f).horizontalAdvance(t) <= dw:
+                self._lbl.setFont(f); return
 
     def _refresh(self):
         t = self._calc.display; self._fit(t); self._lbl.setText(t)
