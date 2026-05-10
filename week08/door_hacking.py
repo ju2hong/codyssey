@@ -3,145 +3,113 @@ import itertools
 import string
 import zipfile
 import zlib
+import multiprocessing
 from datetime import datetime
 
+
 ZIP_PATH = os.path.join(
-    os.path.dirname(__file__),
+    os.path.dirname(os.path.abspath(__file__)),
     'emergency_storage_key.zip'
 )
 
 CHARACTERS = string.digits + string.ascii_lowercase
 PASSWORD_LENGTH = 6
-LOG_INTERVAL = 100_000
 
 
-def print_progress(count, start_time, password):
-    elapsed = datetime.now() - start_time
+def _try_chunk(args):
+    zip_path, prefix, characters, password_length = args
+    remaining = password_length - len(prefix)
 
-    print(
-        f'반복 횟수: {count:,} | '
-        f'경과 시간: {elapsed} | '
-        f'현재 시도: {password}'
-    )
-
-
-def save_password(password):
     try:
-        with open('password.txt', 'w', encoding='utf-8') as file:
-            file.write(password)
+        with zipfile.ZipFile(zip_path) as zf:
+            first_file = zf.namelist()[0]
+            for combo in itertools.product(characters, repeat=remaining):
+                password = prefix + ''.join(combo)
+                try:
+                    zf.read(first_file, pwd=password.encode())
+                    return password
+                except Exception:
+                    continue
+    except (FileNotFoundError, zipfile.BadZipFile, OSError):
+        return None
 
-        print('\nzip 암호가 password.txt에 저장되었습니다.')
-
-    except OSError as error:
-        print(f'파일 저장 오류: {error}')
-
-
-def try_password(zip_file, file_name, password):
-    try:
-        zip_file.setpassword(password.encode())
-
-        # 전체 파일 읽지 않고 1바이트만 읽어서 검사
-        with zip_file.open(file_name) as file:
-            file.read(1)
-
-        return True
-
-    except (
-        RuntimeError,
-        zlib.error,
-        zipfile.BadZipFile,
-        EOFError
-    ):
-        return False
-
-
-def print_success(password, count, elapsed, storage_key):
-    print('\n[성공] zip 암호를 찾았습니다!')
-    print(f'zip 암호: {password}')
-    print(f'총 반복 횟수: {count:,}')
-    print(f'총 경과 시간: {elapsed}')
-    print(f'\nemergency storage key: {storage_key}')
+    return None
 
 
 def unlock_zip(zip_path=ZIP_PATH):
-    start_time = datetime.now()
+    characters = CHARACTERS
+    password_length = PASSWORD_LENGTH
 
-    print(f'시작 시간: {start_time:%Y-%m-%d %H:%M:%S}')
+    start_time = datetime.now()
+    cpu_count = multiprocessing.cpu_count()
+
+    print(f'시작 시간: {start_time.strftime("%Y-%m-%d %H:%M:%S")}')
     print(f'zip 파일: {zip_path}')
-    print(
-        f'비밀번호 구성: 숫자 + 소문자 알파벳 '
-        f'{PASSWORD_LENGTH}자리'
-    )
-    print(
-        f'경우의 수: '
-        f'{len(CHARACTERS) ** PASSWORD_LENGTH:,}가지'
-    )
+    print(f'비밀번호 구성: 숫자 + 소문자 알파벳 {password_length}자리')
+    print(f'경우의 수: {len(characters) ** password_length:,}가지')
+    print(f'사용 CPU 코어: {cpu_count}개')
     print('암호 해독을 시작합니다...\n')
 
-    count = 0
+    prefix_length = 2
+    prefixes = [
+        ''.join(p)
+        for p in itertools.product(characters, repeat=prefix_length)
+    ]
+    total = len(prefixes)
+    tasks = [
+        (zip_path, prefix, characters, password_length)
+        for prefix in prefixes
+    ]
+
+    completed = 0
+    password = None
 
     try:
-        with zipfile.ZipFile(zip_path) as zip_file:
-
-            file_name = zip_file.namelist()[0]
-
-            for combination in itertools.product(
-                CHARACTERS,
-                repeat=PASSWORD_LENGTH
-            ):
-                password = ''.join(combination)
-                count += 1
-
-                if count % LOG_INTERVAL == 0:
-                    print_progress(
-                        count,
-                        start_time,
-                        password
-                    )
-
-                if not try_password(
-                    zip_file,
-                    file_name,
-                    password
-                ):
-                    continue
-
+        with multiprocessing.Pool(processes=cpu_count) as pool:
+            for result in pool.imap_unordered(_try_chunk, tasks):
+                completed += 1
                 elapsed = datetime.now() - start_time
-
-                zip_file.setpassword(password.encode())
-
-                with zip_file.open(file_name) as file:
-                    content = file.read()
-
-                storage_key = content.decode(
-                    'utf-8'
-                ).strip()
-
-                print_success(
-                    password,
-                    count,
-                    elapsed,
-                    storage_key
+                print(
+                    f'\r진행: {completed}/{total} '
+                    f'({completed / total * 100:.1f}%) '
+                    f'| 경과: {elapsed}',
+                    end='',
+                    flush=True
                 )
+                if result is not None:
+                    pool.terminate()
+                    password = result
+                    break
 
-                save_password(password)
+    except KeyboardInterrupt:
+        print('\n\n[중단] 사용자에 의해 중단되었습니다.')
+        return None
 
-                return password
+    elapsed = datetime.now() - start_time
 
-    except FileNotFoundError:
-        print(f'오류: {zip_path} 파일을 찾을 수 없습니다.')
+    if password:
+        print(f'\n\n[성공] zip 암호를 찾았습니다!')
+        print(f'zip 암호: {password}')
+        print(f'총 경과 시간: {elapsed}')
 
-    except zipfile.BadZipFile:
-        print(
-            f'오류: {zip_path}는 '
-            f'유효한 zip 파일이 아닙니다.'
-        )
+        try:
+            with zipfile.ZipFile(zip_path) as zf:
+                content = zf.read(zf.namelist()[0], pwd=password.encode())
+            storage_key = content.decode('utf-8').strip()
+            print(f'\nemergency storage key: {storage_key}')
+        except Exception as e:
+            print(f'키 읽기 오류: {e}')
 
-    except OSError as error:
-        print(f'파일 접근 오류: {error}')
+        try:
+            with open('password.txt', 'w') as f:
+                f.write(password)
+            print('\nzip 암호가 password.txt에 저장되었습니다.')
+        except OSError as e:
+            print(f'파일 저장 오류: {e}')
 
-    print('암호를 찾지 못했습니다.')
+        return password
 
+    print('\n암호를 찾지 못했습니다.')
     return None
 
 
