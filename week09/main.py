@@ -24,52 +24,61 @@ def decode_text(target_text, shift):
     return decoded_text
 
 
+def save_result(decoded_text):
+    try:
+        with open(
+            'result.txt',
+            'w',
+            encoding = 'utf-8'
+        ) as file:
+            file.write(decoded_text)
+
+        print()
+        print('===== 최종 복호화 결과 =====')
+        print(decoded_text)
+        print()
+        print('result.txt 파일 저장 완료')
+
+    except OSError:
+        print('result.txt 저장 중 오류가 발생했습니다.')
+
+
 def caesar_cipher_decode(target_text):
+    dictionary_words = [
+        'hello',
+        'world',
+        'love',
+        'mars',
+        'door',
+        'open'
+    ]
+
     alphabet_count = 26
 
     print('===== 카이사르 암호 해독 결과 =====')
     print()
 
     for shift in range(alphabet_count):
+
         decoded_result = decode_text(target_text, shift)
 
         print(f'[이동 값 : {shift}]')
         print(decoded_result)
         print()
 
+        lower_result = decoded_result.lower()
 
-def save_result(target_text):
-    try:
-        shift_input = input(
-            '정답으로 보이는 이동 값을 입력하세요 (0~25): '
-        )
+        for word in dictionary_words:
 
-        shift = int(shift_input)
+            if word in lower_result:
+                print('사전 단어 발견!')
+                print(f'발견된 단어 : {word}')
+                print(f'이동 값 : {shift}')
 
-        if shift < 0 or shift > 25:
-            print('0부터 25 사이의 숫자를 입력해야 합니다.')
-            return
+                save_result(decoded_result)
+                return
 
-        final_result = decode_text(target_text, shift)
-
-        with open(
-            'result.txt',
-            'w',
-            encoding = 'utf-8'
-        ) as file:
-            file.write(final_result)
-
-        print()
-        print('===== 최종 복호화 결과 =====')
-        print(final_result)
-        print()
-        print('result.txt 파일 저장 완료')
-
-    except ValueError:
-        print('숫자를 입력해야 합니다.')
-
-    except OSError:
-        print('result.txt 저장 중 오류가 발생했습니다.')
+    print('사전에 등록된 단어를 찾지 못했습니다.')
 
 
 def main():
@@ -86,8 +95,6 @@ def main():
             return
 
         caesar_cipher_decode(encrypted_text)
-
-        save_result(encrypted_text)
 
     except FileNotFoundError:
         print('password.txt 파일을 찾을 수 없습니다.')
