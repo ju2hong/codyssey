@@ -1,11 +1,7 @@
-"""
-javis.py - 음성 녹음 모듈
-화성 생존 일지를 음성으로 기록하기 위한 마이크 인식 및 녹음 기능
-"""
-
 import os
 import wave
 import datetime
+import threading
 
 try:
     import pyaudio
@@ -19,6 +15,8 @@ FORMAT = pyaudio.paInt16 if PYAUDIO_AVAILABLE else None
 CHANNELS = 1
 RATE = 44100
 RECORDS_DIR = 'records'
+DATE_FORMAT = '%Y%m%d'
+DATETIME_FORMAT = '%Y%m%d-%H%M%S'
 
 
 def ensure_records_dir():
@@ -35,8 +33,115 @@ def get_filename():
         str: '년월일-시간분초.wav' 형식의 파일 경로
     """
     now = datetime.datetime.now()
-    filename = now.strftime('%Y%m%d-%H%M%S') + '.wav'
+    filename = now.strftime(DATETIME_FORMAT) + '.wav'
     return os.path.join(RECORDS_DIR, filename)
+
+
+def parse_date_from_filename(filename):
+    """파일명에서 날짜를 파싱한다.
+
+    파일명 형식: '년월일-시간분초.wav' (예: 20260525-143022.wav)
+
+    Args:
+        filename (str): 파일명 (경로 제외)
+
+    Returns:
+        datetime.date or None: 파싱된 날짜, 실패 시 None
+    """
+    basename = os.path.splitext(filename)[0]
+    parts = basename.split('-')
+    if len(parts) < 2:
+        return None
+    try:
+        return datetime.datetime.strptime(parts[0], DATE_FORMAT).date()
+    except ValueError:
+        return None
+
+
+def input_date(prompt):
+    """사용자로부터 날짜를 입력받는다.
+
+    Args:
+        prompt (str): 입력 안내 메시지
+
+    Returns:
+        datetime.date or None: 입력된 날짜, 취소 시 None
+    """
+    while True:
+        print(prompt)
+        user_input = input('날짜 입력 (YYYYMMDD, 취소: q) > ').strip()
+
+        if user_input.lower() == 'q':
+            return None
+
+        try:
+            parsed = datetime.datetime.strptime(user_input, DATE_FORMAT).date()
+            return parsed
+        except ValueError:
+            print('[경고] 날짜 형식이 올바르지 않습니다. 예: 20260525')
+
+
+def list_records_by_date_range():
+    """특정 범위의 날짜에 해당하는 녹음 파일 목록을 출력한다.
+
+    사용자로부터 시작 날짜와 종료 날짜를 입력받아
+    해당 범위에 포함되는 .wav 파일을 records 폴더에서 검색하여 출력한다.
+    """
+    ensure_records_dir()
+
+    print('\n[날짜 범위로 녹음 파일 검색]')
+    print('-' * 40)
+
+    start_date = input_date('시작 날짜를 입력하세요.')
+    if start_date is None:
+        print('[취소] 검색을 취소했습니다.')
+        return
+
+    end_date = input_date('종료 날짜를 입력하세요.')
+    if end_date is None:
+        print('[취소] 검색을 취소했습니다.')
+        return
+
+    if start_date > end_date:
+        print('[경고] 시작 날짜가 종료 날짜보다 늦습니다. 날짜를 바꿔서 검색합니다.')
+        start_date, end_date = end_date, start_date
+
+    print(f'\n[검색 범위] {start_date.strftime(DATE_FORMAT)} ~ '
+          f'{end_date.strftime(DATE_FORMAT)}')
+    print('-' * 40)
+
+    try:
+        all_files = os.listdir(RECORDS_DIR)
+    except OSError as e:
+        print(f'[오류] records 폴더를 읽을 수 없습니다: {e}')
+        return
+
+    matched_files = []
+
+    for filename in sorted(all_files):
+        if not filename.endswith('.wav'):
+            continue
+        file_date = parse_date_from_filename(filename)
+        if file_date is None:
+            continue
+        if start_date <= file_date <= end_date:
+            matched_files.append((file_date, filename))
+
+    if not matched_files:
+        print('  해당 날짜 범위에 녹음 파일이 없습니다.')
+    else:
+        print(f'  총 {len(matched_files)}개의 파일을 찾았습니다.\n')
+        for idx, (file_date, filename) in enumerate(matched_files, start=1):
+            filepath = os.path.join(RECORDS_DIR, filename)
+            try:
+                file_size = os.path.getsize(filepath)
+                size_kb = file_size / 1024
+            except OSError:
+                size_kb = 0.0
+            date_str = file_date.strftime('%Y년 %m월 %d일')
+            print(f'  {idx:3}. [{date_str}] {filename}  ({size_kb:.1f} KB)')
+
+    print('-' * 40)
 
 
 def list_microphones():
@@ -137,8 +242,6 @@ def record_audio(device_index=None):
     frames = []
     recording = True
 
-    import threading
-
     def stop_on_enter():
         nonlocal recording
         input()
@@ -201,7 +304,8 @@ def main():
         print('\n[메뉴]')
         print('  1. 마이크 목록 확인')
         print('  2. 음성 녹음 시작')
-        print('  3. 종료')
+        print('  3. 날짜 범위로 녹음 파일 검색')
+        print('  4. 종료')
         print()
 
         choice = input('선택 > ').strip()
@@ -215,11 +319,14 @@ def main():
             record_audio(device_index=device_index)
 
         elif choice == '3':
+            list_records_by_date_range()
+
+        elif choice == '4':
             print('\n[종료] JAVIS를 종료합니다.')
             break
 
         else:
-            print('[경고] 1, 2, 3 중 하나를 입력하세요.')
+            print('[경고] 1, 2, 3, 4 중 하나를 입력하세요.')
 
 
 if __name__ == '__main__':
