@@ -1,0 +1,119 @@
+import csv
+import os
+
+os.environ['KMP_DUPLICATE_LIB_OK'] = 'TRUE'
+
+try:
+    import whisper
+    WHISPER_AVAILABLE = True
+except ImportError:
+    WHISPER_AVAILABLE = False
+
+# ---------------------------------------------------------------------------
+# 상수
+# ---------------------------------------------------------------------------
+
+RECORDS_DIR = os.path.join(
+    os.path.dirname(os.path.abspath(__file__)),
+    '..', 'week10', 'records'
+)
+SEP = '-' * 40
+
+# ---------------------------------------------------------------------------
+# STT (Speech to Text) - whisper 기반
+# ---------------------------------------------------------------------------
+
+
+def get_record_files():
+    """RECORDS_DIR 내 음성 파일 목록을 반환한다."""
+    try:
+        all_files = sorted(os.listdir(RECORDS_DIR))
+    except OSError as e:
+        print(f'[오류] records 폴더를 읽을 수 없습니다: {e}')
+        return []
+    return [
+        f for f in all_files
+        if f.endswith(('.wav', '.mp3', '.m4a'))
+    ]
+
+
+def convert_audio_to_text(model, audio_path):
+    """whisper 모델로 음성 파일을 텍스트로 변환하고 세그먼트를 반환한다."""
+    result = model.transcribe(audio_path, language='ko')
+    return result.get('segments', [])
+
+
+def save_csv(audio_path, segments):
+    """세그먼트 결과를 CSV 파일로 저장한다."""
+    audio_name = os.path.splitext(os.path.basename(audio_path))[0]
+    csv_path = os.path.join(
+        os.path.dirname(os.path.abspath(__file__)),
+        audio_name + '.csv'
+    )
+    with open(csv_path, 'w', newline='', encoding='utf-8-sig') as csv_file:
+        writer = csv.writer(csv_file)
+        writer.writerow(['음성 파일내에서의 시간', '인식된 텍스트'])
+        for segment in segments:
+            writer.writerow([
+                round(segment['start'], 2),
+                segment['text'].strip()
+            ])
+
+
+def run_stt():
+    """STT 메뉴 진입점: 파일 목록 표시 → 선택 → whisper 변환 → CSV 저장."""
+    if not WHISPER_AVAILABLE:
+        print('[오류] whisper가 설치되어 있지 않습니다. (pip install openai-whisper)')
+        return
+
+    audio_files = get_record_files()
+    if not audio_files:
+        print('[안내] 변환할 음성 파일이 없습니다.')
+        return
+
+    print(f'\n[녹음 파일 목록]\n{SEP}')
+    for idx, f in enumerate(audio_files, start=1):
+        size_kb = os.path.getsize(os.path.join(RECORDS_DIR, f)) / 1024
+        print(f'  {idx:3}. {f}  ({size_kb:.1f} KB)')
+    print(SEP)
+
+    while True:
+        user_input = input(
+            f'변환할 파일 번호 입력 (1~{len(audio_files)}, 취소: q) > '
+        ).strip()
+        if user_input.lower() == 'q':
+            print('[취소] STT 변환을 취소했습니다.')
+            return
+        try:
+            num = int(user_input)
+            if 1 <= num <= len(audio_files):
+                selected = audio_files[num - 1]
+                break
+            print(f'[경고] 1~{len(audio_files)} 사이의 번호를 입력하세요.')
+        except ValueError:
+            print('[경고] 숫자 또는 q를 입력하세요.')
+
+    audio_path = os.path.join(RECORDS_DIR, selected)
+    print(f'\n[STT 시작] {selected}')
+    model = whisper.load_model('base')
+    segments = convert_audio_to_text(model, audio_path)
+    save_csv(audio_path, segments)
+    print(f'[저장 완료] {os.path.splitext(selected)[0]}.csv')
+
+
+# ---------------------------------------------------------------------------
+# 메인
+# ---------------------------------------------------------------------------
+
+
+def main():
+    """메인 실행 함수."""
+    print('=' * 40)
+    print('   JAVIS - STT 시스템')
+    print('   화성 생존 일지 음성 기록기')
+    print('=' * 40)
+    run_stt()
+
+
+if __name__ == '__main__':
+    main()
