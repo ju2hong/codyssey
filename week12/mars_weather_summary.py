@@ -1,12 +1,12 @@
 """
 mars_weather_summary.py
 
-화성 날씨 CSV 파일을 읽어 MySQL 데이터베이스에 저장한다.
+화성 날씨 CSV 파일을 읽어 MySQL에 저장한다.
 """
 
 import csv
 
-import mysql.connector
+from mysql_helper import MySQLHelper
 
 
 CSV_FILE = 'mars_weathers_data.CSV'
@@ -25,6 +25,7 @@ def load_env():
                 continue
 
             key, value = line.split('=', 1)
+
             env[key] = value
 
     return env
@@ -42,58 +43,43 @@ DATABASE = ENV['DB_NAME']
 def create_database():
     """데이터베이스 생성"""
 
-    connection = mysql.connector.connect(
-        host=HOST,
-        port=PORT,
-        user=USER,
-        password=PASSWORD
+    helper = MySQLHelper(
+        HOST,
+        PORT,
+        USER,
+        PASSWORD
     )
 
-    cursor = connection.cursor()
-
-    cursor.execute(
+    helper.execute(
         f'CREATE DATABASE IF NOT EXISTS {DATABASE}'
     )
 
-    cursor.close()
-    connection.close()
 
-
-def connect_database():
-    """데이터베이스 연결"""
-
-    return mysql.connector.connect(
-        host=HOST,
-        port=PORT,
-        user=USER,
-        password=PASSWORD,
-        database=DATABASE
-    )
-
-
-def create_table(connection):
+def create_table():
     """테이블 생성"""
 
-    query = '''
+    helper = MySQLHelper(
+        HOST,
+        PORT,
+        USER,
+        PASSWORD,
+        DATABASE
+    )
+
+    helper.execute(
+        '''
         CREATE TABLE IF NOT EXISTS mars_weather (
             weather_id INT PRIMARY KEY,
             mars_date DATE NOT NULL,
             temp DECIMAL(5, 2),
             storm INT
         )
-    '''
-
-    cursor = connection.cursor()
-
-    cursor.execute(query)
-
-    connection.commit()
-
-    cursor.close()
+        '''
+    )
 
 
 def read_weather_csv():
-    """CSV 파일 읽기"""
+    """CSV 읽기"""
 
     weather_data = []
 
@@ -113,30 +99,25 @@ def read_weather_csv():
     return weather_data
 
 
-def print_weather_data(weather_data):
-    """CSV 데이터 출력"""
-
-    print('===== CSV 데이터 확인 =====')
-
-    for row in weather_data[:5]:
-        print(row)
-
-    print(f'총 데이터 수 : {len(weather_data)}')
-
-
-def insert_weather_data(connection, weather_data):
+def insert_weather_data(weather_data):
     """데이터 저장"""
 
+    helper = MySQLHelper(
+        HOST,
+        PORT,
+        USER,
+        PASSWORD,
+        DATABASE
+    )
+
     query = '''
-        INSERT IGNORE INTO mars_weather
-        (
+        INSERT IGNORE INTO mars_weather (
             weather_id,
             mars_date,
             temp,
             storm
         )
-        VALUES
-        (
+        VALUES (
             %s,
             %s,
             %s,
@@ -144,53 +125,31 @@ def insert_weather_data(connection, weather_data):
         )
     '''
 
-    cursor = connection.cursor()
-
-    cursor.executemany(
+    count = helper.executemany(
         query,
         weather_data
     )
 
-    connection.commit()
-
-    print(
-        f'{cursor.rowcount}건 저장 완료'
-    )
-
-    cursor.close()
+    print(f'{count}건 저장 완료')
 
 
 def main():
-    """메인 함수"""
 
-    connection = None
+    create_database()
 
-    try:
-        create_database()
+    create_table()
 
-        connection = connect_database()
+    weather_data = read_weather_csv()
 
-        create_table(connection)
+    print(
+        f'총 데이터 수 : {len(weather_data)}'
+    )
 
-        weather_data = read_weather_csv()
+    insert_weather_data(
+        weather_data
+    )
 
-        print_weather_data(
-            weather_data
-        )
-
-        insert_weather_data(
-            connection,
-            weather_data
-        )
-
-        print('작업 완료')
-
-    except Exception as error:
-        print(f'오류 발생 : {error}')
-
-    finally:
-        if connection:
-            connection.close()
+    print('작업 완료')
 
 
 if __name__ == '__main__':
